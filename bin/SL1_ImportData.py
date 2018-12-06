@@ -26,7 +26,7 @@ def GenerateTableNames(config):
     Make use of Domain based parameters to get the data.
     '''
     # -----------<<<  Setting constant values that are to be used inside function  >>>----------- #
-    DatasetName = 'xxxxxxxxxxxxxxxxx'
+    DatasetName = config['BigQueryConfig']['DatasetName']
     SIDs = ast.literal_eval(config['DomainConfig']['SIDs'])
     DataGrabMethodology = config['DomainConfig']['UseStaticOrDynamicCurrentDay']
     LevBasedPrint('Inside "'+GenerateTableNames.__name__+'" function and configurations for this has been set.',3,1)
@@ -51,7 +51,7 @@ def GenerateTableNames(config):
         TableToInclude = ''
         for i in range(len(SIDs)):
             for j in range(len(Dates)):
-                TableToInclude += '\n\tTABLE_QUERY([{}.xxxxxxxxxxx],\'table_id like "'.format(DatasetName) + SIDs[i] + '_' + Dates[j] + '_%"\'),'
+                TableToInclude += '\n\tTABLE_QUERY([{}.Citadel_Stream],\'table_id like "'.format(DatasetName) + SIDs[i] + '_' + Dates[j] + '_%"\'),'
     elif DataGrabMethodology == 'dynamic':
         CurrentTime = datetime(time.gmtime().tm_year, time.gmtime().tm_mon, time.gmtime().tm_mday, time.gmtime().tm_hour, time.gmtime().tm_min, time.gmtime().tm_sec) ## UTC        
         TableDateToTake = []
@@ -63,7 +63,7 @@ def GenerateTableNames(config):
         for i in range(len(SIDs)):
             for j in range(len(TableDateToTake)):
                 TableCnt += 0
-                TableToInclude += '\n\tTABLE_QUERY([{}.xxxxxxxxxxx],\'table_id like "'.format(DatasetName) + SIDs[i] + '_' + TableDateToTake[j] + '%"\'),'
+                TableToInclude += '\n\tTABLE_QUERY([{}.Citadel_Stream],\'table_id like "'.format(DatasetName) + SIDs[i] + '_' + TableDateToTake[j] + '%"\'),'
         LevBasedPrint('Total number of tables accessed : '+str(TableCnt),3)
     # ---------------------------------------<<<  xyz  >>>--------------------------------------- #
     LevBasedPrint('',3,1)
@@ -145,14 +145,14 @@ def ImportData(config):
     
     Extracts any size data from any SID of any number of days.
     
-    Works in Two Configuration(config['aim']['Task']), namely 'TrainTest' & 'GlTest'
+    Works in Two Configuration(config['IterationAim']['CycleType']), namely 'TrainTest' & 'GlTest'
     'TrainTest' is for models training purpose where This Dataset is split later too make dataset size adequate for training uing sampling
     'GlTest' is purely for prediction purpose, i.e. it will be used as testset only and will consume saved model to provide labels to observations
     """
     # -----------<<<  Setting constant values that are to be used inside function  >>>----------- #
     AccessDataFrom = config['DataCollection']['GetDataFrom']
     if AccessDataFrom == 'BQ':
-        SettingToUse = config['IterationAim']['Task']
+        SettingToUse = config['IterationAim']['CycleType']
         if SettingToUse: GlTestDataSize = int(config['IterationAim']['GlTest_DataGrabWindow_Hr'])
         FileLocalSavingName = config['InputPaths']['BQ_RawDataStoringName'].format(SettingToUse)
         GetNewCopy = config['DomainConfig']['BQ_GetNewCopyOfData']
@@ -193,6 +193,7 @@ def ImportData(config):
         LevBasedPrint('Data Loaded From the File: '+ FileName, 1)
     
     # ---------------------------------------<<<  xyz  >>>--------------------------------------- #
+    LevBasedPrint('Data Import | Complete',1)
     LevBasedPrint('',1,1)
     return DF
     # ------------------------------------------------------------------------------------------- #

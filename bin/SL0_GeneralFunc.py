@@ -88,6 +88,10 @@ def CreateKey(DF, Key_ColToUse):
     '''
     Use to combine columns to generate a key which is seperated by '|'
     eg. Key_ColToUse = sid, bin & IP ==> return sid|Bin|IP 
+    
+    Other way: 
+        Convert all columns to be sent to string first
+        DF[['Col1','Col2','Col3']].apply(lambda x: ('|').join(x), axis=1)
     '''
     df = DF.copy()
     for col_ind in range(len(Key_ColToUse)):
@@ -114,12 +118,12 @@ def AddRecommendation(msgToAdd, config):
     if os.path.exists(absPathRecommFile):
         df = pd.read_csv(filePath)
         if msgToAdd not in list(df['Recommendation'].unique()):
-            print('New Recommendation has been added')
+            LevBasedPrint('New Recommendation has been added', 0)
             df = pd.concat([df,NewDf], ignore_index=True, sort=False)
         else:
-            print('This recommendation is already present, hence not adding.')
+            LevBasedPrint('This recommendation is already present, hence not adding.', 0)
     else:
-        print('First Recommendation has been added')
+        LevBasedPrint('First Recommendation has been added', 0)
         df = NewDf.copy()
     df.to_csv(absPathRecommFile, index = False)
 
