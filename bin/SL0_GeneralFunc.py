@@ -12,7 +12,7 @@ Function this file Contains:
 '''
 
 # ----------------------------------------------- Loading Libraries ----------------------------------------------- #
-import time, os, sys
+import time, os, sys, json
 import pandas as pd
 
 
@@ -38,6 +38,8 @@ def GetBackSomeDirectoryAndGetAbsPath(RelPath, msg = False):
     if msg is True: print('Current directory where code is executed :', curr0)
     if msg is True: print('New directory path which was mentioned :', curr)
     return curr0, curr
+    # ------------------------------------------------------------------------------------------- #
+
 
 
 # ------------------------------------------------- TimeCataloging ------------------------------------------------ #
@@ -80,6 +82,8 @@ def TimeCataloging(config, Key, Value, First = 'Off'):
     tempDF.to_csv(ExecTimePath, index=False)
     if Key == 'WholeExecutionTime':
         return tempDF.iloc[len(tempDF)-1,:].to_dict()
+    # ------------------------------------------------------------------------------------------- #
+
 
 
 # --------------------------------------------------- CreateKey --------------------------------------------------- #
@@ -102,6 +106,8 @@ def CreateKey(DF, Key_ColToUse):
         else:
             df.index = [ "|".join([I1[ind], I2[ind]]) for ind in range(len(I1)) ] #, I3[ind]
     return df.index
+    # ------------------------------------------------------------------------------------------- #
+
 
 
 # ---------------------------------------------- AddRecommendation ------------------------------------------------ #
@@ -126,6 +132,8 @@ def AddRecommendation(msgToAdd, config):
         LevBasedPrint('First Recommendation has been added', 0)
         df = NewDf.copy()
     df.to_csv(absPathRecommFile, index = False)
+    # ------------------------------------------------------------------------------------------- #
+
 
 
 # ------------------------------------------------- LevBasedPrint ------------------------------------------------- #
@@ -138,6 +146,172 @@ def LevBasedPrint(txt, level=0, StartOrEnd=0):
         ## expecting '\t' len = 8 spaces
         print('', '+'+'-'*(112 - 8*level),sep= '\t'*level)
     if len(txt) != 0: print('', txt,sep= '\t'*level + '|'+' ')
+    # ------------------------------------------------------------------------------------------- #
+
+
+
+# ------------------------------------------------ DataFrameScaling ----------------------------------------------- #
+
+def DataFrameScaling(DF, FeatScalerDict, config, FeatureScale_LocID = '-11', Explicit_Scaler = None, Explicit_Task = None):
+    '''
+    Since A custom variant of Data Scaling is used and this Model is to be preserved, to be used as for predict and also to be used as a way to point conceptual/data drift if it occurs.
+
+    Each time a Scaling is to be done the basic information of the dataset at that pt will be saved with a unique location ID.
+    The Dataset properties for Scaling are to be saved/added when Model is to be Trained and just to be read when the predict will be use.
+    
+    FeatScalerDict = {'Feat1ToBeScaled': 'Standard', 'Feat2ToBeScaled': 'Standard', 'Feat3ToBeScaled': 'Standard'}
+    Scaling Settings: 'Normalized', 'Standard', 'Standard_Median', 'Nil'
+    FeatureScale_LocID: is used to id the location where which data is to be used
+    Explicit_Scaler: if mentioned Use the mentioned Scaler in place of the one mentioned in config file
+    Explicit_Task : TrainTest // GlTest
+    '''
+    
+    # -----------<<<  Setting constant values that are to be used inside function  >>>----------- #
+    ScalingInformationFile = config['ModelPaths']['ScalingInfoFile'] 
+    ConceptDriftFilePath = config['TempPaths']['ConceptualDriftFile']
+    ToTransfDF = DF.loc[:, [ feat for feat in FeatScalerDict ] ]
+    TransfDF =  DF.loc[:, [ col for col in DF.columns if col not in [ feat for feat in FeatScalerDict ] ] ]
+    if Explicit_Scaler is not None:
+        for feat in FeatScalerDict:
+            FeatScalerDict[feat] = Explicit_Scaler
+    Explicit_Task = config['IterationAim']['CycleType'] if Explicit_Task is None else Explicit_Task
+    LevBasedPrint('Inside "'+DataFrameScaling.__name__+'" function and configurations for this has been set.',1,1)
+    
+    # ---------------<<<  Logging / Accessing Feature Stats from the Dataframe  >>>-------------- #
+    ## Dataset Information is to be preserved
+    if(Explicit_Task == 'TrainTest'):
+        
+        LevBasedPrint('>>> Saving features stats before scaling the feature. "TrainTest" is used.')
+        ScalingFeatureOverallFile = {}
+        ## Computing Measures that are used for Scaling
+        tempFeatStatsDict = {}
+        for col in ToTransfDF.columns:
+            tempFeatStatsDict[col] = {'Min': ToTransfDF[col].min(),
+                                      'Median': ToTransfDF[col].median(),
+                                      'Max': ToTransfDF[col].max(),
+                                      'Mean': ToTransfDF[col].mean(),
+                                      'Std': ToTransfDF[col].std()
+                                     }
+        ScalingFeatureOverallFile[FeatureScale_LocID] = tempFeatStatsDict
+        InfoForScaling = tempFeatStatsDict
+    
+        if os.path.exists(ScalingInformationFileName):
+            file = open(ScalingInformationFileName, 'r')
+            data = json.load(file)
+            file.close()
+            data[FeatureScale_LocID] = InfoForScaling
+        else:
+            data = ScalingFeatureOverallFile
+
+        ## Preserving the Information Locally i.e saving model data 
+        file = open(ScalingInformationFileName, 'w+')
+        DictToWrite = json.dumps(data)
+        file.write(DictToWrite)
+        file.close()
+    
+    ## Dataset Information is to be extracted
+    elif(Explicit_Task == 'GlTest'):
+        
+        LevBasedPrint('<<< Extracting features stats before scaling the feature. "GlTest" Setting is used.')
+        if os.path.exists(ScalingInformationFileName):
+            file = open(ScalingInformationFileName, 'r')
+            data = json.load(file)
+            file.close()
+            if(FeatureScale_LocID in list(data.keys())):
+                ## read information for that key
+                InfoForScaling = data[FeatureScale_LocID]
+            else:
+                txt = 'Exception: FeastureScaleLocationID based key that should have been present in GlTest is not present. Try running TrainTest Cycle first.'
+                LevBasedPrint(txt, 1)
+                AddRecommendation(txt, config)
+                raise Exception(txt)
+        else:
+            txt = 'Exception: "ScalingInfoFile" that should have existed is not present in the storage.'
+            LevBasedPrint(txt, 1)
+            AddRecommendation(txt, config)
+            raise Exception(txt)
+    
+    ## Incase Task doesn't matches any setting "TrainTest" or "GlTest"
+    else:
+        txt = 'Exception: "config[\'IterationAim\'][\'CycleType\']" or "Explicit_Task" is containing some undefined value.'
+        LevBasedPrint(txt, 1)
+        AddRecommendation(txt, config)
+        raise Exception(txt)
+    
+    
+    # -------------------------------<<<  Scaling the Feature  >>>------------------------------- #
+    BorderTxt = '+'+'-'*100
+    LevBasedPrint('Scaling Features', 1)
+    LevBasedPrint(str(BorderTxt), 1)
+    ## Using the Information received from 'InfoForScaling', Scaling the Dataset
+    for feat in featScalDict:
+        LevBasedPrint('|\tScaling Feature "{}" using "{}" scaler'.foramt(feat, featScalDict[feat]), 1)
+        li = list(ToTransfDF[feat])
+        if(Scaler == 'Normalized'):
+            TransfDF[feat] = [ (elem - InfoForScaling[feat]['Min']) / (InfoForScaling[feat]['Max'] - InfoForScaling[feat]['Min']) for elem in li ] 
+        elif(Scaler == 'Standard'):
+            TransfDF[feat] = [ (elem - InfoForScaling[feat]['Mean']) / InfoForScaling[feat]['Std'] for elem in li ] 
+        elif(Scaler == 'Standard_Median'):
+            TransfDF[feat] = [ (elem - InfoForScaling[feat]['Median']) / InfoForScaling[feat]['Std'] for elem in li ] 
+        elif(Scaler == 'Nil'):
+            TransfDF[feat] = li
+        else:
+            LevBasedPrint('This provided scaler "{}" is NOT defined'.format(featScalDict[feat]), 1)
+            LevBasedPrint('Support for \'OneHotEncoding\' // \'DummyEncoding\' will be added ')
+            continue
+    LevBasedPrint(str(BorderTxt), 1)
+    
+    
+    # --------------------------------<<<  Conceptual Drift  >>>--------------------------------- #
+    '''
+    Currently only with 'normalized'
+    Additional Extension: Highlight observation whose values lies outside from that of TrainSet --- mark as outlier (Conceptual Drift)
+    '''
+    RemovedIndexFromDF, ConcpDftDF = [], None
+    if Explicit_Task == 'GlTest':
+        IndexOutsideRange = []
+        LevBasedPrint('Scaling Features', 1)
+        LevBasedPrint(str(BorderTxt), 1)
+        for feat in featScalDict:
+            if featScalDict[feat] == 'Normalized':
+                ValOutsideRange = [ True if((obs < 0)|(obs > 1)) else False for obs in TransfDF[feat] ]
+                if sum(ValOutsideRange) > 0: 
+                    LevBasedPrint('|\tFeature "{}" contains "{}" Observation Outside the Range'.format(feat, sum(ValOutsideRange)), 1) 
+                    IndOutRange = [ ind for ind in range(len(TransfDF[feat])) if((TransfDF[feat][ind] < 0)|(TransfDF[feat][ind] > 1)) ]
+                    [ IndexOutsideRange.append(ind) for ind in IndOutRange ]
+                    LevBasedPrint('|\tThese index are outside the defined range : '+ str(IndexOutsideRange), 1)
+        LevBasedPrint(str(BorderTxt), 1)
+     
+    # ----------<<<  Seperating Conceptual Drift Observation and Scaled Observation  >>>--------- #
+        RemovedIndexFromDF = list(pd.Series(IndexOutsideRange).unique())
+        ConcpDftDF = TransfDF.iloc[RemovedIndexFromDF,:].reset_index(drop=True)
+        TransfDF = TransfDF.iloc[[ i for i in range(len(TransfDF)) if i not in RemovedIndexFromDF ], :].reset_index(drop=True)
+        
+        if len(ConcpDftDF) > 0:
+            if os.path.exists(ConceptDriftFilePath):
+                tempDF = pd.read_csv(ConceptDriftFilePath)
+                ConcpDftDF = ConcpDftDF.append(tempDF, ignore_index=True, sort = False)
+            if(len(ConcpDftDF.columns) >= 3): ### Here createKey concept cann be used
+                I1 = ConcpDftDF[ConcpDftDF.columns[0]].astype('str')
+                I2 = ConcpDftDF[ConcpDftDF.columns[1]].astype('str')
+                I3 = ConcpDftDF[ConcpDftDF.columns[2]].astype('str')
+                ConcpDftDF.index = [ "||".join([I1[ind], I2[ind], I3[ind]]) for ind in range(len(I1)) ]
+            elif(len(ConcpDftDF.columns) >= 2):
+                I1 = ConcpDftDF[ConcpDftDF.columns[0]].astype('str')
+                I2 = ConcpDftDF[ConcpDftDF.columns[1]].astype('str')
+                ConcpDftDF.index = [ "||".join([I1[ind], I2[ind]]) for ind in range(len(I1)) ]
+            else:
+                ConcpDftDF.index = ConcpDftDF[ConcpDftDF.columns[0]].astype('str')
+            ConcpDftDF.drop_duplicates(keep = 'first', inplace = True)
+            ConcpDftDF.reset_index(drop=True, inplace=True)
+            ConcpDftDF.to_csv(ConceptDriftFilePath,index=False)
+            LevBasedPrint('Conceptual Drift based observations were present and they have been saved.', 1)
+    
+    
+    # ---------------------------------------<<<  xyz  >>>--------------------------------------- #
+    LevBasedPrint('', 1, 1)
+    return new_df, ConcpDftDF 
+    # ------------------------------------------------------------------------------------------- #
 
 
 
@@ -320,6 +494,9 @@ def DataFrameScalingV1(dataframe, ColumnToIgnore, configuration, FeatureScale_Lo
 
 # def DataFrameNormalization(temp_df):
 #         return (temp_df - temp_df.min()) / (temp_df.max() - temp_df.min())
+    # ------------------------------------------------------------------------------------------- #
+
+
 
 
 # ----------------------------------------------------------------------------------------------------------------- #
