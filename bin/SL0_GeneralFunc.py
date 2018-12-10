@@ -9,10 +9,12 @@ Function this file Contains:
     - AddRecommendation: Used to add messages to the recommendation file. When all recommendation are 
                 followed delete this file.
     - LevBasedPrint: It is used to print statement based on the level. i.e.  function level.
+    - DataFrameScaling: It is used to Scale Features
+    - DatasetPrimAnalysis: Used to understand Dataset as in Quantitative and Qualitative section and do a basic analysis of it.
 '''
 
 # ----------------------------------------------- Loading Libraries ----------------------------------------------- #
-import time, os, sys, json
+import time, os, sys, json, ast
 import pandas as pd
 
 
@@ -315,6 +317,63 @@ def DataFrameScaling(DF, FeatScalerDict, config, FeatureScale_LocID = '-11', Exp
 
 
 
+# ---------------------------------------------- DatasetPrimAnalysis ---------------------------------------------- #
+def DatasetPrimAnalysis(DF):
+    '''
+    Function to understand the structure of the dataset
+    
+    np.isnan(yy).any(), np.isinf(xx).any(), np.isinf(yy).any()
+    
+    Arithmetic mean is present 
+    GM and HM can can also be added 
+    '''
+    # -----------<<<  Setting constant values that are to be used inside function  >>>----------- #
+    df_explore = DF.copy()
+    LevBasedPrint('Inside "'+DatasetPrimAnalysis.__name__+'" function and configurations for this has been set.',1,1)
+    
+    # -------------------------------<<<  Allowed To Execute  >>>-------------------------------- #
+    LevBasedPrint('Overall dataset shape : {}'.format(df_explore.shape), 1)
+    
+    temp = pd.DataFrame(df_explore.isnull().sum(), columns = ['IsNullSum'])
+    temp['dtypes'] = df_explore.dtypes.tolist()
+    temp['IsNaSum'] = df_explore.isna().sum().tolist()
+    
+    temp_cat = temp.loc[temp['dtypes']=='O' ,:]
+    if (len(temp_cat) > 0):
+        df_cat = df_explore.loc[:,temp_cat.index].fillna('Missing-NA')
+        LevBasedPrint('Dataset shape containing Qualitative feature : {}'.format(df_cat.shape), 1)
+        temp_cat = temp_cat.join(df_cat.describe().T).fillna('')
+        temp_cat['CategoriesName'] = [ list(df_cat[fea].unique()) for fea in temp_cat.index ]
+        temp_cat['%Missing'] = [ round((temp_cat['IsNullSum'][i] / max(temp_cat['count']))*100,2) for i in range(len(temp_cat)) ]
+        display(temp_cat)
+#         print(temp_cat)
+
+    temp_num = temp.loc[((temp['dtypes']=='int') | (temp['dtypes']=='float')),:]
+    if (len(temp_num) > 0):
+        df_num = df_explore.loc[:,temp_num.index]#.fillna('Missing-NA')
+        LevBasedPrint('Dataset shape containing Quantitative feature : {}'.format(df_num.shape), 1)
+        temp_num = temp_num.join(df_num.describe().T).fillna('')
+        temp_num['%Missing'] = [ round((temp_num['IsNullSum'][i] / max(temp_num['count']))*100,2) for i in range(len(temp_num)) ]
+        
+        ## Converting float value to readable format
+        colsFormatToChange = ['mean', 'std', 'min', '25%', '50%', '75%', 'max']
+        temp_num['count'] = [ int(ele) for ele  in temp_num['count'] ] 
+        for col in colsFormatToChange:
+            st_li = [ '{0:.10f}'.format(ele) for ele in temp_num[col] ] 
+            temp_num[col] = [ st[:st.index('.')+4] for st in st_li ]
+        display(temp_num)
+#         print(temp_num)
+    
+    if len(temp)!=len(temp_cat)+len(temp_num):
+        LevBasedPrint("Some columns data is missing b/c of data type", 1)
+    
+    # ------------------------------<<<  returning the result  >>>------------------------------- #
+    LevBasedPrint('', 1, 1)
+    return temp_cat, temp_num
+    # ------------------------------------------------------------------------------------------- #
+
+
+
 # --------------------------------------------- DataFrameScaling - V1 --------------------------------------------- #
 
 ######################################################### Algorithm to Preserve and Use offline Computer Stats for Data Scaling
@@ -496,6 +555,26 @@ def DataFrameScalingV1(dataframe, ColumnToIgnore, configuration, FeatureScale_Lo
 #         return (temp_df - temp_df.min()) / (temp_df.max() - temp_df.min())
     # ------------------------------------------------------------------------------------------- #
 
+
+
+# ----------------------------------------------- GeneralStats - V1 ----------------------------------------------- #
+from scipy.stats import mstats
+from sklearn.preprocessing import minmax_scale
+def GeneralStats(df_series):
+    '''
+    This Function uses 'pandas series' to compute and print various statistics on the series
+    # https://docs.scipy.org/doc/scipy-0.13.0/reference/stats.mstats.html
+    '''
+    print("\nGeneral Statistics")
+    series = minmax_scale(df_series, feature_range=(1e-10, 1))
+    print("Zscore per point", [mstats.zmap(i, series) for i in series] [0:4] + ["....."])
+    print("Zscore series", mstats.zscore(series)[0:4] )
+    print("Describing Series", mstats.describe(series) )
+    print("Trimmed Min", mstats.tmin(series) )
+    print("Trimmed Max", mstats.tmax(series) )
+    print("Geometric Mean", mstats.gmean(series) )
+    print("Harmonic Mean", mstats.hmean(series) )
+    # ------------------------------------------------------------------------------------------- #
 
 
 
